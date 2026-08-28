@@ -1,0 +1,16 @@
+from ultralytics import YOLO
+model = YOLO("yolo11s.pt")
+
+results = model.train(
+    data=DATA_YAML,
+    epochs=50,
+    patience=15,
+    imgsz=640,
+    device=0,
+    batch=8,        # เริ่มที่ 8 ก่อน ถ้าไม่ error ค่อยลองขยับเป็น 16
+    workers=4,       # CPU cores ปกติมีจำกัด ไม่ต้องตั้งสูงเกินไป
+    cache="ram",
+    plots=True,
+)
+
+This is 200 images per ID train with the above config. 
