@@ -1,0 +1,955 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Segment Labeler</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:#1a1a1a; --bg2:#242424; --bg3:#2e2e2e; --border:#3a3a3a;
+  --text:#e8e8e8; --text2:#aaa; --text3:#666;
+  --accent:#3b82f6; --accent-bg:#1e3a5f;
+  --green:#22c55e; --green-bg:#14291f; --red:#ef4444;
+}
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; background:var(--bg); color:var(--text); font-size:13px; height:100vh; overflow:hidden; }
+#app { display:grid; grid-template-rows:auto auto 1fr; height:100vh; }
+
+/* topbar */
+#topbar { display:flex; align-items:center; gap:8px; padding:8px 14px; background:var(--bg2); border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.top-btn { display:flex; align-items:center; gap:5px; padding:5px 11px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; color:var(--text); cursor:pointer; font-size:12px; font-family:inherit; white-space:nowrap; }
+.top-btn:hover { background:#383838; }
+.folder-label { font-size:11px; color:var(--text3); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.folder-label.set { color:var(--text2); }
+.sep { width:1px; height:18px; background:var(--border); flex-shrink:0; }
+#prog-wrap { display:flex; align-items:center; gap:8px; margin-left:auto; }
+#prog-bar-bg { width:110px; height:6px; background:var(--bg3); border-radius:3px; overflow:hidden; }
+#prog-bar { height:100%; background:var(--accent); border-radius:3px; transition:width 0.2s; }
+#prog-text { font-size:11px; color:var(--text2); white-space:nowrap; }
+
+/* status bar */
+#statusbar { padding:4px 14px; background:var(--bg2); border-bottom:1px solid var(--border); font-size:11px; color:var(--text3); min-height:22px; display:none; }
+#statusbar.visible { display:block; }
+
+/* main */
+#main { display:grid; grid-template-columns:1fr 280px; overflow:hidden; }
+#canvas-area { position:relative; background:#111; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+canvas { display:block; image-rendering:pixelated; }
+#placeholder { display:flex; flex-direction:column; align-items:center; gap:10px; color:var(--text3); text-align:center; }
+#placeholder .icon { font-size:42px; }
+#placeholder p { font-size:14px; color:var(--text2); line-height:1.7; }
+#label-badge { position:absolute; top:12px; left:12px; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; background:rgba(0,0,0,0.75); border:2px solid transparent; display:none; }
+
+/* sidebar */
+#sidebar { background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
+.panel { padding:10px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.panel-title { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text3); margin-bottom:8px; }
+
+/* nav */
+#img-counter { font-size:18px; font-weight:600; text-align:center; margin-bottom:4px; }
+#img-name { font-size:11px; color:var(--text3); text-align:center; margin-bottom:8px; word-break:break-all; }
+.nav-row { display:flex; gap:6px; }
+.nav-row button { flex:1; padding:6px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:12px; font-family:inherit; cursor:pointer; }
+.nav-row button:hover { background:#383838; }
+.nav-row button:disabled { opacity:0.3; cursor:not-allowed; }
+#cur-label { font-size:14px; font-weight:500; text-align:center; margin-top:7px; min-height:20px; }
+#cur-label.unlabeled { color:var(--text3); font-style:italic; font-weight:400; }
+
+/* search */
+.search-row { display:flex; gap:5px; }
+.search-row input { flex:1; background:var(--bg3); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:5px 8px; font-size:12px; font-family:inherit; }
+.search-row input::placeholder { color:var(--text3); }
+.search-row button { padding:5px 9px; background:var(--bg3); border:1px solid var(--border); border-radius:6px; color:var(--text2); cursor:pointer; }
+.search-row button:hover { background:#383838; }
+
+/* classes */
+#class-list { display:flex; flex-direction:column; gap:3px; max-height:170px; overflow-y:auto; margin-bottom:7px; }
+.cls-chip { display:flex; align-items:center; gap:7px; padding:5px 8px; border-radius:6px; border:1px solid var(--border); cursor:pointer; font-size:12px; color:var(--text2); user-select:none; }
+.cls-chip:hover { background:var(--bg3); color:var(--text); }
+.cls-chip.active { border-color:var(--accent); background:var(--accent-bg); color:#93c5fd; }
+.cls-chip .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+.cls-chip .kbd { margin-left:auto; font-size:10px; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 5px; font-family:monospace; color:var(--text3); }
+.cls-chip.active .kbd { color:#93c5fd; border-color:var(--accent); }
+.cls-chip .del-x { margin-left:3px; color:var(--text3); font-size:15px; line-height:1; display:none; cursor:pointer; }
+.cls-chip:hover .del-x { display:inline; }
+.cls-chip .del-x:hover { color:var(--red); }
+.add-row { display:flex; gap:5px; }
+.add-row input { flex:1; background:var(--bg3); border:1px solid var(--border); border-radius:6px; color:var(--text); padding:5px 8px; font-size:12px; font-family:inherit; }
+.add-row input::placeholder { color:var(--text3); }
+.add-row button { padding:5px 11px; background:var(--accent); border:none; border-radius:6px; color:#fff; font-size:16px; cursor:pointer; }
+.add-row button:hover { background:#2563eb; }
+
+/* image list */
+#img-list-wrap { flex:1; overflow-y:auto; min-height:0; }
+#img-list { display:flex; flex-direction:column; }
+.img-row { display:flex; align-items:center; gap:7px; padding:5px 10px; cursor:pointer; font-size:12px; color:var(--text2); border-bottom:1px solid transparent; }
+.img-row:hover { background:var(--bg3); }
+.img-row.active { background:var(--accent-bg); color:#93c5fd; }
+.img-row .dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; background:var(--border); }
+.img-row.done .dot { background:var(--green); }
+.img-row.active .dot { background:var(--accent); }
+.img-row .rname { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.img-row .cls-tag { font-size:10px; background:var(--bg); border:1px solid var(--border); border-radius:3px; padding:1px 5px; color:var(--text3); max-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.img-row.done .cls-tag { color:var(--green); border-color:var(--green-bg); background:var(--green-bg); }
+
+/* save panel */
+.save-panel { padding:10px 12px 12px; flex-shrink:0; }
+.split-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
+.split-row label { font-size:11px; color:var(--text3); white-space:nowrap; }
+.split-row input[type=range] { flex:1; accent-color:var(--accent); }
+.split-row span { font-size:11px; color:var(--text2); width:28px; text-align:right; }
+#save-btn { width:100%; padding:8px; background:var(--green); border:none; border-radius:8px; color:#000; font-size:13px; font-weight:600; font-family:inherit; cursor:pointer; }
+#save-btn:hover { background:#16a34a; }
+#save-btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+/* shortcuts */
+.hint { font-size:11px; color:var(--text3); line-height:2; }
+.hint kbd { background:var(--bg3); border:1px solid var(--border); border-radius:3px; padding:0 4px; font-family:monospace; color:var(--text2); font-size:10px; }
+
+/* toast */
+#toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:#111; color:#e8e8e8; border:1px solid var(--border); padding:8px 18px; border-radius:8px; font-size:13px; opacity:0; transition:opacity 0.25s; pointer-events:none; z-index:999; white-space:nowrap; }
+#toast.show { opacity:1; }
+
+::-webkit-scrollbar { width:4px; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span style="font-weight:700;font-size:14px;">⚡ Segment Labeler</span>
+    <div class="sep"></div>
+    <button class="top-btn" id="btn-img-folder">📁 Images folder</button>
+    <span class="folder-label" id="lbl-img">Not set</span>
+    <div class="sep"></div>
+    <button class="top-btn" id="btn-mask-folder">🎭 Masks folder</button>
+    <span class="folder-label" id="lbl-mask">Not set</span>
+    <div class="sep"></div>
+    <button class="top-btn" id="btn-label-file">📄 Label file</button>
+    <span class="folder-label" id="lbl-labelfile">Not set</span>
+    <div class="sep"></div>
+    <label for="dataset-count" style="font-size:11px;color:var(--text3);white-space:nowrap;">Pics per ID</label>
+    <input type="number" id="dataset-count" min="1" step="1" placeholder="e.g. 50" required
+           style="width:64px;padding:5px 7px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;font-family:inherit;"
+           title="Required. How many pictures to take from each dataset ID (e.g. 00001_1, 00001_2…) before pairing.">
+    <div class="sep"></div>
+    <button class="top-btn" id="btn-pair">🔗 Auto-pair files</button>
+    <div class="sep"></div>
+    <button class="top-btn" id="btn-out-folder">💾 Output folder</button>
+    <span class="folder-label" id="lbl-out">Not set</span>
+    <div id="prog-wrap">
+      <div id="prog-bar-bg"><div id="prog-bar" style="width:0%"></div></div>
+      <span id="prog-text">0 / 0 labeled</span>
+    </div>
+  </div>
+
+  <div id="statusbar"></div>
+
+  <div id="main">
+    <div id="canvas-area">
+      <div id="placeholder">
+        <div class="icon">🖼️</div>
+        <p>1. Click <strong>Images folder</strong> &amp; <strong>Masks folder</strong><br>
+           2. Click <strong>Auto-pair files</strong><br>
+           3. Add classes, then start labeling!</p>
+      </div>
+      <canvas id="c" style="display:none;"></canvas>
+      <div id="label-badge"></div>
+    </div>
+
+    <div id="sidebar">
+
+      <div class="panel">
+        <div class="panel-title">Current image</div>
+        <div id="img-counter">— / —</div>
+        <div id="img-name">No image loaded</div>
+        <div class="nav-row">
+          <button id="prev-btn">← Prev</button>
+          <button id="next-btn">Next →</button>
+        </div>
+        <div id="cur-label" class="unlabeled">Not labeled</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Jump to image</div>
+        <div class="search-row">
+          <input type="text" id="search-input" placeholder="Search filename…">
+          <button id="search-btn">↵</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Classes</div>
+        <div id="class-list"></div>
+        <div class="add-row">
+          <input type="text" id="cls-input" placeholder="New class name…" maxlength="40">
+          <button id="cls-add-btn">+</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">Shortcuts</div>
+        <div class="hint">
+          <kbd>1</kbd>–<kbd>9</kbd> assign class &nbsp;
+          <kbd>←</kbd><kbd>→</kbd> prev / next<br>
+          <kbd>U</kbd> unlabel &nbsp;
+          <kbd>F</kbd> toggle mask &nbsp;
+          <kbd>S</kbd> save
+        </div>
+      </div>
+
+      <div class="panel" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
+        <div class="panel-title">All images</div>
+        <div id="img-list-wrap"><div id="img-list"></div></div>
+      </div>
+
+      <div class="save-panel">
+        <div class="split-row">
+          <label style="width:32px">Val</label>
+          <input type="range" id="val-split" min="5" max="40" value="20" step="5">
+          <span id="val-pct" style="width:32px">20%</span>
+        </div>
+        <div class="split-row">
+          <label style="width:32px">Test</label>
+          <input type="range" id="test-split" min="0" max="30" value="10" step="5">
+          <span id="test-pct" style="width:32px">10%</span>
+        </div>
+        <button id="save-btn" disabled>💾 Export YOLO Dataset (S)</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ── Constants ────────────────────────────────────────────────────────────────
+const COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7',
+                '#14b8a6','#f97316','#ec4899','#84cc16','#06b6d4'];
+
+// ── State ────────────────────────────────────────────────────────────────────
+let imgFolder  = null;
+let maskFolder = null;
+let outFolder  = null;
+let labelMap   = {};   // dsId -> class name, parsed from the label .txt file
+let bboxExtractionRunning = false;
+let pairs      = [];   // {name, imgFile, maskFile, label, bbox, imgW, imgH}
+let curIdx     = 0;
+let classes    = JSON.parse(localStorage.getItem('sl_classes') || '[]');
+let showMask   = true;
+let imgBitmap  = null;
+let maskBitmap = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const canvas     = document.getElementById('c');
+const ctx        = canvas.getContext('2d');
+const statusbar  = document.getElementById('statusbar');
+
+// ── Utilities ────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, ms=2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+function setStatus(msg) {
+  if (msg) { statusbar.textContent = msg; statusbar.classList.add('visible'); }
+  else      { statusbar.classList.remove('visible'); }
+}
+
+function hexToRgb(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+async function mkDir(parent, name) {
+  return parent.getDirectoryHandle(name, { create: true });
+}
+
+// ── Folder pickers ───────────────────────────────────────────────────────────
+document.getElementById('btn-img-folder').addEventListener('click', async () => {
+  try {
+    imgFolder = await window.showDirectoryPicker();
+    const el = document.getElementById('lbl-img');
+    el.textContent = imgFolder.name; el.classList.add('set');
+    toast('Images folder: ' + imgFolder.name);
+  } catch(e) { if (e.name !== 'AbortError') toast('Error: ' + e.message); }
+});
+
+document.getElementById('btn-mask-folder').addEventListener('click', async () => {
+  try {
+    maskFolder = await window.showDirectoryPicker();
+    const el = document.getElementById('lbl-mask');
+    el.textContent = maskFolder.name; el.classList.add('set');
+    toast('Masks folder: ' + maskFolder.name);
+  } catch(e) { if (e.name !== 'AbortError') toast('Error: ' + e.message); }
+});
+
+document.getElementById('btn-label-file').addEventListener('click', async () => {
+  try {
+    const [fileHandle] = await window.showOpenFilePicker({
+      types: [{ description: 'Label file', accept: { 'text/plain': ['.txt', '.csv'] } }],
+      excludeAcceptAllOption: false,
+      multiple: false,
+    });
+    const file = await fileHandle.getFile();
+    const text = await file.text();
+    labelMap = parseLabelFile(text);
+    const count = Object.keys(labelMap).length;
+    const el = document.getElementById('lbl-labelfile');
+    el.textContent = file.name; el.classList.add('set');
+    toast(`✅ Loaded ${count} ID→label mappings from ${file.name}`);
+  } catch(e) { if (e.name !== 'AbortError') toast('Error: ' + e.message); }
+});
+
+// Parse "name <-> id" pairs. Handles the real-world format used here:
+//   "Advil Liquid Gel,1"   (label first, plain numeric ID last)
+// but also tolerates the reverse "1,Advil Liquid Gel" or "00001 Advil Liquid Gel".
+function parseLabelFile(text) {
+  const map = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+
+    let idStr = null, label = null;
+    const lastComma = line.lastIndexOf(',');
+
+    if (lastComma !== -1) {
+      const left  = line.slice(0, lastComma).trim();
+      const right = line.slice(lastComma + 1).trim();
+      if (/^\d+$/.test(right))      { label = left;  idStr = right; } // "Name,123"
+      else if (/^\d+$/.test(left))  { idStr = left;   label = right; } // "123,Name"
+    }
+
+    if (idStr === null) {
+      // Fallback: split on tab/colon/whitespace and find whichever token is purely numeric
+      const parts = line.split(/[\t:]+|\s+/).map(s => s.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        if (/^\d+$/.test(parts[0]))                    { idStr = parts[0];  label = parts.slice(1).join(' '); }
+        else if (/^\d+$/.test(parts[parts.length - 1])) { idStr = parts[parts.length - 1]; label = parts.slice(0, -1).join(' '); }
+      }
+    }
+
+    if (idStr === null || !label) continue;
+    map[idStr] = label;                                   // as written, e.g. "1"
+    map[idStr.padStart(5, '0')] = label;                   // zero-padded, e.g. "00001"
+  }
+  return map;
+}
+
+function lookupLabel(dsId) {
+  return labelMap[dsId] || labelMap[String(parseInt(dsId, 10))] || null;
+}
+
+document.getElementById('btn-out-folder').addEventListener('click', async () => {
+  try {
+    outFolder = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const el = document.getElementById('lbl-out');
+    el.textContent = outFolder.name; el.classList.add('set');
+    toast('Output folder: ' + outFolder.name);
+  } catch(e) { if (e.name !== 'AbortError') toast('Error: ' + e.message); }
+});
+
+// ── Auto-pair ────────────────────────────────────────────────────────────────
+document.getElementById('btn-pair').addEventListener('click', async () => {
+  if (!imgFolder || !maskFolder) { toast('⚠️ Set both folders first'); return; }
+
+  const countInput = document.getElementById('dataset-count');
+  const perId = parseInt(countInput.value, 10);
+  if (!Number.isFinite(perId) || perId <= 0) {
+    toast('⚠️ Enter how many pictures per ID before pairing');
+    countInput.focus();
+    return;
+  }
+
+  setStatus('Scanning folders…');
+
+  const IMG_EXT = /\.(jpg|jpeg|png|bmp|webp)$/i;
+  const imgFiles = {}, maskFiles = {};
+
+  for await (const [name, handle] of imgFolder.entries()) {
+    if (handle.kind !== 'file' || !IMG_EXT.test(name)) continue;
+    if (/_seg\./i.test(name)) continue;
+    imgFiles[name] = handle;
+  }
+  for await (const [name, handle] of maskFolder.entries()) {
+    if (handle.kind !== 'file') continue;
+    maskFiles[name] = handle;
+  }
+
+  let missing = 0;
+  const EXTS = ['.jpg','.jpeg','.png','.bmp','.webp'];
+  const groups = {}; // dsId -> array of pair objects (unsliced)
+
+  for (const [imgName, imgHandle] of Object.entries(imgFiles)) {
+    const dot  = imgName.lastIndexOf('.');
+    const base = imgName.slice(0, dot);
+    let maskHandle = null;
+    for (const e of EXTS) {
+      const try1 = base + '_seg' + e;
+      const try2 = base + '_SEG' + e;
+      if (maskFiles[try1]) { maskHandle = maskFiles[try1]; break; }
+      if (maskFiles[try2]) { maskHandle = maskFiles[try2]; break; }
+    }
+    if (!maskHandle) { missing++; continue; }
+
+    // Dataset ID = the number before the underscore, e.g. "00001_1" -> id "00001", sub-index 1
+    const idMatch  = base.match(/^(\d+)/);
+    const dsId     = idMatch ? idMatch[1] : base;
+    const subMatch = base.match(/_(\d+)$/);
+    const subIdx   = subMatch ? parseInt(subMatch[1], 10) : 0;
+
+    const savedLabel = localStorage.getItem('sl_lbl_' + base) || null;
+    const autoLabel  = lookupLabel(dsId);
+    const label      = savedLabel || autoLabel || null;
+    // Persist a freshly auto-assigned label so it sticks like a manual one
+    if (!savedLabel && autoLabel) localStorage.setItem('sl_lbl_' + base, autoLabel);
+
+    const savedBbox  = JSON.parse(localStorage.getItem('sl_bbox_' + base) || 'null');
+    const pairObj = { name: base, dsId, subIdx, imgFile: imgHandle, maskFile: maskHandle,
+                       label, bbox: savedBbox, imgW: null, imgH: null,
+                       bboxAttempted: !!savedBbox, bboxFailed: false };
+    (groups[dsId] = groups[dsId] || []).push(pairObj);
+  }
+
+  // ── Take up to `perId` pictures from EACH dataset ID (00001, 00002, …) ──
+  const allIds = Object.keys(groups).sort((a, b) => a.localeCompare(b));
+  pairs = [];
+  let shortIds = 0;
+  for (const id of allIds) {
+    const items = groups[id].sort((a, b) => a.subIdx - b.subIdx);
+    if (items.length < perId) shortIds++;
+    pairs.push(...items.slice(0, perId));
+  }
+
+  // ── Auto-register any class names from the label file that aren't in the class list yet ──
+  const newClassNames = [...new Set(pairs.map(p => p.label).filter(Boolean))]
+    .filter(name => !classes.includes(name));
+  if (newClassNames.length) {
+    classes.push(...newClassNames);
+    localStorage.setItem('sl_classes', JSON.stringify(classes));
+    renderClasses();
+  }
+
+  const autoLabeledCount = pairs.filter(p => p.label).length;
+
+  setStatus('');
+  const shortMsg  = shortIds ? ` — ${shortIds} ID(s) had fewer than ${perId}` : '';
+  const labelMsg  = Object.keys(labelMap).length
+    ? `, ${autoLabeledCount} auto-labeled`
+    : '';
+  toast(`✅ Paired ${pairs.length} images across ${allIds.length} IDs (${perId} each)${labelMsg}${shortMsg}${missing ? `, ${missing} unmatched` : ''}`, 4500);
+
+  curIdx = 0;
+  renderImgList();
+  updateProgress();
+  document.getElementById('save-btn').disabled = (pairs.length === 0);
+  if (pairs.length) loadPair(0);
+
+  // kick off background bbox extraction
+  extractAllBboxes();
+});
+
+// ── Bbox extraction ───────────────────────────────────────────────────────────
+// Reuse one canvas across all extraction calls instead of allocating a new
+// (potentially huge, image-sized) canvas per image — creating thousands of
+// large canvases back-to-back can silently exhaust GPU/canvas memory in the
+// browser, which makes getImageData quietly return blank data (no error).
+let _bboxCanvas = null, _bboxCtx = null;
+function getBboxCanvas() {
+  if (!_bboxCanvas) {
+    _bboxCanvas = document.createElement('canvas');
+    _bboxCtx = _bboxCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  return { canvas: _bboxCanvas, ctx: _bboxCtx };
+}
+
+// Computes the white/foreground bbox using the MASK's OWN native resolution
+// (cheap — masks are typically small) rather than stretching it up to the
+// full photo resolution. Returns bbox already scaled into image (imgW x imgH)
+// coordinate space.
+function getWhiteBbox(bmp, imgW, imgH) {
+  const mw = bmp.width, mh = bmp.height;
+  const { canvas, ctx } = getBboxCanvas();
+  canvas.width = mw; canvas.height = mh;
+  ctx.clearRect(0, 0, mw, mh);
+  ctx.drawImage(bmp, 0, 0, mw, mh);
+  const d = ctx.getImageData(0, 0, mw, mh).data;
+
+  let x1 = mw, y1 = mh, x2 = 0, y2 = 0, found = false;
+  for (let py = 0; py < mh; py++) {
+    for (let px = 0; px < mw; px++) {
+      const i = (py * mw + px) * 4;
+      if ((d[i] + d[i+1] + d[i+2]) / 3 > 128) {
+        if (px < x1) x1 = px; if (px > x2) x2 = px;
+        if (py < y1) y1 = py; if (py > y2) y2 = py;
+        found = true;
+      }
+    }
+  }
+  if (!found) return null;
+
+  // Scale mask-space coords up to the actual image's coordinate space
+  const sx = imgW / mw, sy = imgH / mh;
+  return [x1 * sx, y1 * sy, (x2 + 1) * sx, (y2 + 1) * sy];
+}
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`timeout: ${label}`)), ms)),
+  ]);
+}
+
+async function extractAllBboxes(onlyPairs) {
+  bboxExtractionRunning = true;
+  const targets = onlyPairs || pairs;
+  let done = 0;
+  for (const pair of targets) {
+    if (pair.bbox) { done++; continue; }
+    if (pair.bboxAttempted && !pair.bboxFailed) { done++; continue; } // legit empty mask, don't retry forever
+    try {
+      const mf   = await withTimeout(pair.maskFile.getFile(), 10000, pair.name + ' mask read');
+      const mbmp = await withTimeout(createImageBitmap(mf), 10000, pair.name + ' mask decode');
+      const imf  = await withTimeout(pair.imgFile.getFile(), 10000, pair.name + ' img read');
+      const ibmp = await withTimeout(createImageBitmap(imf), 10000, pair.name + ' img decode');
+      pair.imgW  = ibmp.width; pair.imgH = ibmp.height;
+      pair.bbox  = getWhiteBbox(mbmp, ibmp.width, ibmp.height);
+      if (pair.bbox) localStorage.setItem('sl_bbox_' + pair.name, JSON.stringify(pair.bbox));
+      pair.bboxFailed = false;
+      ibmp.close && ibmp.close();
+      mbmp.close && mbmp.close();
+    } catch(e) {
+      console.warn('bbox fail', pair.name, e);
+      pair.bboxFailed = true; // couldn't read/decode this file — skip it, don't block the rest
+    }
+    pair.bboxAttempted = true;
+    done++;
+    setStatus(`Extracting bboxes… ${done} / ${targets.length}`);
+    if (done % 5 === 0) await new Promise(r => setTimeout(r, 0));
+  }
+  bboxExtractionRunning = false;
+  setStatus('');
+  const failedCount = targets.filter(p => p.bboxFailed).length;
+  toast(failedCount
+    ? `✅ Bbox extraction finished — ${failedCount} file(s) couldn't be read (see console)`
+    : `✅ All ${targets.length} bboxes ready`);
+}
+
+// ── Load a pair ───────────────────────────────────────────────────────────────
+async function loadPair(i) {
+  if (!pairs.length || i < 0 || i >= pairs.length) return;
+  curIdx = i;
+  const pair = pairs[i];
+
+  document.getElementById('img-counter').textContent = `${i+1} / ${pairs.length}`;
+  document.getElementById('img-name').textContent = pair.name;
+  document.getElementById('prev-btn').disabled = (i === 0);
+  document.getElementById('next-btn').disabled = (i === pairs.length - 1);
+
+  // load image
+  imgBitmap = await createImageBitmap(await pair.imgFile.getFile());
+  pair.imgW = imgBitmap.width; pair.imgH = imgBitmap.height;
+
+  // load mask
+  maskBitmap = await createImageBitmap(await pair.maskFile.getFile());
+
+  // extract bbox if not yet done
+  if (!pair.bbox && !(pair.bboxAttempted && !pair.bboxFailed)) {
+    pair.bbox = getWhiteBbox(maskBitmap, imgBitmap.width, imgBitmap.height);
+    pair.bboxAttempted = true;
+    pair.bboxFailed = false;
+    if (pair.bbox) localStorage.setItem('sl_bbox_' + pair.name, JSON.stringify(pair.bbox));
+  }
+
+  // size canvas
+  const area = document.getElementById('canvas-area');
+  const scale = Math.min((area.clientWidth-20)/imgBitmap.width, (area.clientHeight-20)/imgBitmap.height, 1);
+  canvas.width  = Math.round(imgBitmap.width  * scale);
+  canvas.height = Math.round(imgBitmap.height * scale);
+  canvas.style.display = 'block';
+  document.getElementById('placeholder').style.display = 'none';
+
+  drawCanvas();
+  updateCurLabel();
+  renderClasses();
+  renderImgList();
+  updateProgress();
+
+  const rows = document.querySelectorAll('.img-row');
+  if (rows[i]) rows[i].scrollIntoView({ block:'nearest' });
+}
+
+// ── Draw canvas ───────────────────────────────────────────────────────────────
+function drawCanvas() {
+  if (!imgBitmap) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(imgBitmap, 0, 0, canvas.width, canvas.height);
+
+  if (showMask && maskBitmap) {
+    const pair = pairs[curIdx];
+    const color = pair.label ? COLORS[classes.indexOf(pair.label) % COLORS.length] : '#ffffff';
+    const [cr,cg,cb] = hexToRgb(color);
+
+    // overlay white region
+    const mc = document.createElement('canvas');
+    mc.width = canvas.width; mc.height = canvas.height;
+    const mctx = mc.getContext('2d');
+    mctx.drawImage(maskBitmap, 0, 0, canvas.width, canvas.height);
+    const id = mctx.getImageData(0, 0, canvas.width, canvas.height);
+    const d = id.data;
+    for (let p=0; p<d.length; p+=4) {
+      const bright = (d[p]+d[p+1]+d[p+2])/3;
+      if (bright > 128) { d[p]=cr; d[p+1]=cg; d[p+2]=cb; d[p+3]=140; }
+      else              { d[p+3]=50; }
+    }
+    mctx.putImageData(id, 0, 0);
+    ctx.drawImage(mc, 0, 0);
+
+    // draw bbox on canvas (scaled)
+    if (pair.bbox && pair.imgW) {
+      const [x1,y1,x2,y2] = pair.bbox;
+      const sx = canvas.width  / pair.imgW;
+      const sy = canvas.height / pair.imgH;
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([6,3]);
+      ctx.strokeRect(x1*sx, y1*sy, (x2-x1)*sx, (y2-y1)*sy);
+      ctx.setLineDash([]);
+      if (pair.label) {
+        ctx.fillStyle = color;
+        ctx.font = 'bold 13px sans-serif';
+        const tw = ctx.measureText(pair.label).width;
+        ctx.fillRect(x1*sx, y1*sy-18, tw+8, 18);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(pair.label, x1*sx+4, y1*sy-4);
+      }
+    }
+  }
+
+  // badge
+  const badge = document.getElementById('label-badge');
+  const pair  = pairs[curIdx];
+  if (pair) {
+    badge.style.display = 'block';
+    if (pair.label) {
+      const color = COLORS[classes.indexOf(pair.label) % COLORS.length];
+      badge.textContent = pair.label;
+      badge.style.borderColor = color;
+      badge.style.color = color;
+    } else {
+      badge.textContent = 'Unlabeled';
+      badge.style.borderColor = '#555';
+      badge.style.color = '#888';
+    }
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// ── Classes ───────────────────────────────────────────────────────────────────
+function saveClasses() {
+  localStorage.setItem('sl_classes', JSON.stringify(classes));
+}
+
+function renderClasses() {
+  const el = document.getElementById('class-list');
+  el.innerHTML = '';
+  classes.forEach((cls, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'cls-chip' + (pairs[curIdx] && pairs[curIdx].label === cls ? ' active' : '');
+    chip.innerHTML =
+      `<span class="dot" style="background:${COLORS[i%COLORS.length]}"></span>` +
+      `<span style="flex:1">${cls}</span>` +
+      `<span class="kbd">${i<9 ? i+1 : '-'}</span>` +
+      `<span class="del-x" data-i="${i}">×</span>`;
+
+    chip.addEventListener('click', e => {
+      if (e.target.classList.contains('del-x')) {
+        const di = parseInt(e.target.dataset.i);
+        const removed = classes[di];
+        if (!confirm(`Remove class "${removed}"?`)) return;
+        classes.splice(di, 1);
+        pairs.forEach(p => { if (p.label === removed) p.label = null; });
+        saveClasses(); renderClasses(); renderImgList(); updateCurLabel(); updateProgress();
+      } else {
+        assignLabel(cls);
+      }
+    });
+    el.appendChild(chip);
+  });
+}
+
+document.getElementById('cls-add-btn').addEventListener('click', () => {
+  const input = document.getElementById('cls-input');
+  const name = input.value.trim();
+  if (!name) return;
+  if (classes.includes(name)) { toast('Class already exists'); return; }
+  classes.push(name);
+  input.value = '';
+  saveClasses();
+  renderClasses();
+  toast(`Added class "${name}"`);
+});
+
+document.getElementById('cls-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('cls-add-btn').click();
+});
+
+// ── Assign label ──────────────────────────────────────────────────────────────
+function assignLabel(cls) {
+  if (!pairs.length) return;
+  const pair = pairs[curIdx];
+  pair.label = cls;
+  localStorage.setItem('sl_lbl_' + pair.name, cls);
+  renderClasses();
+  updateCurLabel();
+  renderImgList();
+  updateProgress();
+  drawCanvas();
+  toast(`✓ "${cls}" → ${pair.name}`);
+  if (curIdx < pairs.length - 1) loadPair(curIdx + 1);
+}
+
+function updateCurLabel() {
+  const el = document.getElementById('cur-label');
+  if (!pairs.length) { el.textContent = 'Not labeled'; el.className = 'unlabeled'; return; }
+  const pair = pairs[curIdx];
+  if (pair.label) {
+    el.textContent = pair.label;
+    el.className   = '';
+    el.style.color = COLORS[classes.indexOf(pair.label) % COLORS.length];
+  } else {
+    el.textContent = 'Not labeled';
+    el.className   = 'unlabeled';
+    el.style.color = '';
+  }
+}
+
+// ── Image list ────────────────────────────────────────────────────────────────
+function renderImgList() {
+  const el = document.getElementById('img-list');
+  el.innerHTML = '';
+  pairs.forEach((pair, i) => {
+    const row = document.createElement('div');
+    row.className = 'img-row' + (i===curIdx?' active':'') + (pair.label?' done':'');
+    row.innerHTML =
+      `<span class="dot"></span>` +
+      `<span class="rname">${pair.name}</span>` +
+      `<span class="cls-tag">${pair.label||'—'}</span>`;
+    row.addEventListener('click', () => loadPair(i));
+    el.appendChild(row);
+  });
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+function doSearch() {
+  const q = document.getElementById('search-input').value.trim().toLowerCase();
+  if (!q) return;
+  const i = pairs.findIndex(p => p.name.toLowerCase().includes(q));
+  if (i >= 0) loadPair(i);
+  else toast('Not found: ' + q);
+}
+document.getElementById('search-btn').addEventListener('click', doSearch);
+document.getElementById('search-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+document.getElementById('prev-btn').addEventListener('click', () => {
+  if (curIdx > 0) loadPair(curIdx - 1);
+});
+document.getElementById('next-btn').addEventListener('click', () => {
+  if (curIdx < pairs.length - 1) loadPair(curIdx + 1);
+});
+
+// ── Progress ──────────────────────────────────────────────────────────────────
+function updateProgress() {
+  const done  = pairs.filter(p => p.label).length;
+  const total = pairs.length;
+  document.getElementById('prog-bar').style.width  = total ? (done/total*100).toFixed(0)+'%' : '0%';
+  document.getElementById('prog-text').textContent = `${done} / ${total} labeled`;
+}
+
+// ── Val split slider ──────────────────────────────────────────────────────────
+document.getElementById('val-split').addEventListener('input', function() {
+  document.getElementById('val-pct').textContent = this.value + '%';
+});
+document.getElementById('test-split').addEventListener('input', function() {
+  document.getElementById('test-pct').textContent = this.value + '%';
+});
+
+// ── YOLO export ───────────────────────────────────────────────────────────────
+function bboxToYolo(bbox, imgW, imgH) {
+  const [x1,y1,x2,y2] = bbox;
+  const cx = Math.max(0,Math.min(1,((x1+x2)/2)/imgW));
+  const cy = Math.max(0,Math.min(1,((y1+y2)/2)/imgH));
+  const bw = Math.max(0,Math.min(1,(x2-x1)/imgW));
+  const bh = Math.max(0,Math.min(1,(y2-y1)/imgH));
+  return [cx.toFixed(6), cy.toFixed(6), bw.toFixed(6), bh.toFixed(6)];
+}
+
+document.getElementById('save-btn').addEventListener('click', async () => {
+  if (!pairs.length)  { toast('Nothing to save'); return; }
+  if (!outFolder)     { toast('⚠️ Set an output folder first'); return; }
+
+  // If background extraction is already running, don't start a second overlapping pass —
+  // just wait for it to finish.
+  if (bboxExtractionRunning) {
+    toast('⏳ Waiting for background bbox extraction to finish…', 4000);
+    while (bboxExtractionRunning) await new Promise(r => setTimeout(r, 200));
+  }
+
+  // Force-process any labeled pairs that were never attempted (or timed out/errored before) —
+  // this is what lets Export work without having to manually browse through every image.
+  const needsWork = pairs.filter(p => p.label && !p.bbox && (!p.bboxAttempted || p.bboxFailed));
+  if (needsWork.length) {
+    document.getElementById('save-btn').disabled = true;
+    toast(`⏳ Processing ${needsWork.length} remaining image(s) before export…`, 4000);
+    await extractAllBboxes(needsWork);
+    document.getElementById('save-btn').disabled = false;
+  }
+
+  const labeled = pairs.filter(p => p.label && p.bbox && p.imgW && p.imgH);
+
+  if (labeled.length < pairs.length) {
+    // Build a breakdown of exactly why each excluded picture didn't make it in.
+    let noLabel = 0, failedBbox = 0, emptyMask = 0;
+    for (const p of pairs) {
+      if (p.label && p.bbox && p.imgW && p.imgH) continue;
+      if (!p.label) { noLabel++; continue; }
+      if (p.bboxFailed) failedBbox++;   // file couldn't be read/decoded
+      else emptyMask++;                  // read fine, but mask had no white region
+    }
+
+    const parts = [];
+    if (noLabel)    parts.push(`${noLabel} missing a label (not in label.txt / unlabeled)`);
+    if (emptyMask)  parts.push(`${emptyMask} mask had no visible white region`);
+    if (failedBbox) parts.push(`${failedBbox} file couldn't be read/decoded (corrupt or unsupported)`);
+
+    if (!labeled.length) {
+      toast(`⚠️ No exportable images. ${parts.join(', ')}`, 6000);
+      return;
+    }
+
+    toast(`ℹ️ Exporting ${labeled.length} / ${pairs.length}. Skipped: ${parts.join(', ')}`, 6000);
+  }
+
+  const valPct  = parseInt(document.getElementById('val-split').value)  / 100;
+  const testPct = parseInt(document.getElementById('test-split').value) / 100;
+
+  // Shuffle then slice: test | val | train
+  const shuffled  = [...labeled].sort(() => Math.random() - 0.5);
+  const testCount = Math.round(shuffled.length * testPct);
+  const valCount  = Math.max(1, Math.round(shuffled.length * valPct));
+  const splits = {
+    test:  shuffled.slice(0, testCount),
+    valid: shuffled.slice(testCount, testCount + valCount),
+    train: shuffled.slice(testCount + valCount),
+  };
+  const cls2id = Object.fromEntries(classes.map((c,i) => [c,i]));
+
+  // Create folder structure:
+  // dataset/train/images, dataset/train/labels
+  // dataset/valid/images, dataset/valid/labels
+  // dataset/test/images,  dataset/test/labels
+  const dsDir = await mkDir(outFolder, 'dataset');
+  const dirs  = {};
+  for (const split of ['train','valid','test']) {
+    const splitDir = await mkDir(dsDir, split);
+    dirs[split] = {
+      img: await mkDir(splitDir, 'images'),
+      lbl: await mkDir(splitDir, 'labels'),
+    };
+  }
+
+  let done=0, errors=0;
+  const total = labeled.length;
+
+  for (const [split, splitPairs] of Object.entries(splits)) {
+    for (const pair of splitPairs) {
+      try {
+        // write YOLO label .txt
+        const [cx,cy,bw,bh] = bboxToYolo(pair.bbox, pair.imgW, pair.imgH);
+        const line  = `${cls2id[pair.label]} ${cx} ${cy} ${bw} ${bh}
+`;
+        const txtFh = await dirs[split].lbl.getFileHandle(pair.name+'.txt', {create:true});
+        const txtW  = await txtFh.createWritable();
+        await txtW.write(line); await txtW.close();
+
+        // copy image file
+        const imgFile = await pair.imgFile.getFile();
+        const imgFh   = await dirs[split].img.getFileHandle(imgFile.name, {create:true});
+        const imgWr   = await imgFh.createWritable();
+        await imgWr.write(await imgFile.arrayBuffer()); await imgWr.close();
+      } catch(e) { console.warn('export fail', pair.name, e); errors++; }
+
+      done++;
+      setStatus(`Exporting YOLO dataset… ${done} / ${total}`);
+      if (done % 20 === 0) await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  // write data.yaml
+  const yaml = [
+    '# YOLOv8 dataset — Segment Labeler',
+    '# ' + new Date().toISOString(),
+    '',
+    'path: ./dataset',
+    'train: train/images',
+    'val:   valid/images',
+    'test:  test/images',
+    '',
+    'nc: ' + classes.length,
+    "names: [" + classes.map(c => `'${c}'`).join(', ') + ']',
+  ].join('\n');
+  const yFh = await dsDir.getFileHandle('data.yaml', {create:true});
+  const yW  = await yFh.createWritable();
+  await yW.write(yaml); await yW.close();
+
+  setStatus('');
+  toast(
+    `✅ Train:${splits.train.length}  Valid:${splits.valid.length}  Test:${splits.test.length}  Errors:${errors}  → dataset/`,
+    5000
+  );
+});
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const n = parseInt(e.key);
+  if (n >= 1 && n <= 9 && n <= classes.length) { assignLabel(classes[n-1]); return; }
+  switch(e.key) {
+    case 'ArrowRight': case 'ArrowDown':
+      if (curIdx < pairs.length-1) loadPair(curIdx+1); break;
+    case 'ArrowLeft':  case 'ArrowUp':
+      if (curIdx > 0) loadPair(curIdx-1); break;
+    case 's': case 'S':
+      document.getElementById('save-btn').click(); break;
+    case 'u': case 'U':
+      if (pairs[curIdx]) {
+        pairs[curIdx].label = null;
+        localStorage.removeItem('sl_lbl_' + pairs[curIdx].name);
+        renderClasses(); updateCurLabel(); renderImgList(); updateProgress(); drawCanvas();
+        toast('Label removed');
+      }
+      break;
+    case 'f': case 'F':
+      showMask = !showMask;
+      drawCanvas();
+      toast(showMask ? 'Mask overlay ON' : 'Mask overlay OFF');
+      break;
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+renderClasses();
+renderImgList();
+</script>
+</body>
+</html>
