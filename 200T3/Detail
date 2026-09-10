@@ -1,0 +1,16 @@
+from ultralytics import YOLO
+model = YOLO("yolo11s.pt")
+
+results = model.train(
+    data=DATA_YAML,
+    epochs=80,
+    patience=15,
+    imgsz=640,
+    device=0,
+    batch=16,        # เริ่มที่ 8 ก่อน ถ้าไม่ error ค่อยลองขยับเป็น 16
+    workers=4,       # CPU cores ปกติมีจำกัด ไม่ต้องตั้งสูงเกินไป
+    cache=False,        # ถ้า RAM เยอะมากๆ อาจจะตั้งเป็น True เพื่อให้โหลดเร็วขึ้น
+    plots=True,
+)
+
+For this one, I changed the batch size from 8 to 16 and epochs to 80. It completed in 49.8 hours wwith 79 epochs.
